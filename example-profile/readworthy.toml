@@ -1,0 +1,73 @@
+# Example profile. Copy this folder to profile/ (git-ignored) and make it yours:
+#
+#   cp -r example-profile profile
+#
+# Who reads: a home cook who saves recipes and food articles to get better at cooking.
+# Read: explains why a technique works, walks through a recipe or method, tests equipment fairly.
+# Skip: sponsored gadget pitches, and pieces that teach nothing and are rants, feuds or hype.
+# Unsure: anything borderline; better to look than to lose something good.
+#
+# Jev answers the questions below about each bookmark and never sees these comments.
+# The `skip` rule in [rules] turns the answers into a label:
+#
+#   skip   = the rule is surely true
+#   unsure = a borderline answer could have changed that
+#   read   = everything else
+#
+# Everything here is yours to change: the questions (add, remove, rename, reword),
+# and the rule. A question the rule doesn't use is rejected, since it would only
+# cost money. Give a choice question an `other` option so Jev isn't forced to pick
+# a wrong one. Check your changes with `python scripts/eval.py` against texts you
+# labelled in eval/read and eval/skip.
+
+[rules]
+# What to skip, over the questions below. A noul question is a test by its id; a
+# choice question is a test as `id in [option, ...]`. Combine them with not, and,
+# or and parentheses. Here: skip sales pitches, and pieces that teach nothing and
+# are rants, drama or hype.
+skip = "promotion or (not teaches and (kind in [rant, drama] or hype))"
+# Each test is a probability from Jev's answers (a noul's value, or the total
+# probability of the listed options). It passes at or above `yes`.
+yes = 0.5
+# A test strictly inside this band is unknown. A bookmark is skipped only when
+# every test that decides it is outside the band; otherwise it is unsure.
+uncertain_band = [0.35, 0.65]
+
+
+[questions.teaches]
+type = "noul"
+instructions = "Does `content` teach the reader something they can use in their own kitchen: why a technique works, how to make a dish, or a fair comparison of ingredients or equipment?"
+
+[questions.teaches.criteria]
+"true" = "Explains why something happens when cooking (browning, emulsions, gluten), walks through a recipe or method with enough detail to follow, or compares ingredients or tools by actually testing them."
+"false" = "Only reports what happened or what someone thinks, such as restaurant openings, awards or a chef's opinions, or lists dishes or gadgets with one-line blurbs. The reader learns nothing they could cook with."
+
+[questions.kind]
+type = "choice"
+instructions = "What kind of piece is `content`?"
+
+[questions.kind.criteria]
+tutorial = "A recipe or a step-by-step method."
+explanation = "Explains how or why something works in cooking or food."
+comparison = "Compares ingredients, equipment or approaches."
+news = "Reports recent events in food and restaurants."
+opinion = "Calmly argues a view or shares an experience."
+rant = "Outrage, complaints or attacks aimed at restaurants, brands or people."
+drama = "Disputes, feuds or gossip between chefs, critics or food businesses."
+other = "None of the above."
+
+[questions.promotion]
+type = "noul"
+instructions = "Does `content` mainly exist to get the reader to buy, sign up for or subscribe to something?"
+
+[questions.promotion.criteria]
+"true" = "Product pages, meal-kit or cooking-class pitches, affiliate roundups of kitchen gadgets, or a recipe that only works with the sponsor's branded product."
+"false" = "The main value is information the reader can use without buying anything, even if the author mentions a brand or runs a shop."
+
+[questions.hype]
+type = "noul"
+instructions = "Does `content` make bold claims with nothing behind them?"
+
+[questions.hype.criteria]
+"true" = "Big promises such as the only knife you'll ever need, this one trick, or you've been cooking it wrong your whole life, with no tests, reasons or results to back them."
+"false" = "Claims are modest or backed by evidence, even if the tone is excited."

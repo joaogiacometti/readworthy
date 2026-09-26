@@ -1,0 +1,39 @@
+{
+  "model": "typesafe/jev-1.13-20260917",
+  "answers": {
+    "teaches": {
+      "type": "noul",
+      "noul": 0.98
+    },
+    "kind": {
+      "type": "choice",
+      "choice": "explanation",
+      "probabilities": {
+        "tutorial": 0,
+        "explanation": 1,
+        "comparison": 0,
+        "news": 0,
+        "opinion": 0,
+        "rant": 0,
+        "drama": 0,
+        "other": 0
+      },
+      "confidence": 1
+    },
+    "promotion": {
+      "type": "noul",
+      "noul": 0.01
+    },
+    "hype": {
+      "type": "noul",
+      "noul": 0.08
+    }
+  },
+  "usage": {
+    "input_tokens": 1167,
+    "output_tokens": 154,
+    "cost": 4.9014e-05
+  },
+  "id": "gen-dec-1790366051-SFqC7nWQ6u1YyuS4rTjC",
+  "provider": "TypeSafe"
+}

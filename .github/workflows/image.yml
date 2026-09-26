@@ -1,0 +1,60 @@
+# Push a tag vX.Y.Z (matching the flake's version) to publish ghcr.io/<owner>/readworthy:X.Y.Z and :latest,
+# for amd64 and arm64.
+name: image
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Native runners: building under emulation would be slow.
+          - {runner: ubuntu-24.04, system: x86_64-linux, arch: amd64}
+          - {runner: ubuntu-24.04-arm, system: aarch64-linux, arch: arm64}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+
+      - name: Check the tag matches the package version
+        run: |
+          version=$(nix eval --raw .#packages.${{ matrix.system }}.default.version)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match flake version $version" >&2
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      # Also runs the unit tests, as part of building the package.
+      - name: Build the image
+        run: nix build .#packages.${{ matrix.system }}.image
+
+      - name: Push to ghcr.io
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          nix run --inputs-from . nixpkgs#skopeo -- copy \
+            --dest-creds "$GITHUB_ACTOR:$GH_TOKEN" \
+            docker-archive:result "docker://ghcr.io/$owner/readworthy:$VERSION-${{ matrix.arch }}"
+
+  # One tag for both architectures: each machine pulls its own.
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Combine the images under the version and latest tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/$owner/readworthy:${GITHUB_REF_NAME#v}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create -t "$image" -t "ghcr.io/$owner/readworthy:latest" "$image-amd64" "$image-arm64"
