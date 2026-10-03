@@ -4,8 +4,9 @@
 Each file's first line is the title and the rest the content, sent to Jev as separate fields like the webhook does.
 
 Prints accuracy, a confusion matrix, Jev's `wanted` probability behind every wrong outcome, how each `keep_at` would
-have scored, and the cost. Needs OPENROUTER_API_KEY; costs money, except for the answers cached in
-<profile>/.eval-cache.json from earlier runs (keyed by model, question and text; --fresh ignores it).
+have scored, and what the run costs. Needs OPENROUTER_API_KEY; costs money, except for the answers cached in
+<profile>/.eval-cache.json from earlier runs (keyed by model, question and text, with what each cost; --fresh ignores
+it).
 """
 
 from __future__ import annotations
@@ -32,29 +33,33 @@ THRESHOLDS = [round(0.30 + 0.05 * i, 2) for i in range(13)]  # 0.30 .. 0.90
 class CachedBackend:
     """A JevBackend that answers from `path` when it has seen the same model, state and questions before.
 
-    Cached answers cost nothing, so `Decision.cost_usd` is 0 for them. `jev-latest` is cached by that name: run with
-    --fresh after it changes.
+    A cached answer carries what it cost when it was paid for, so a run's total is what it would cost uncached; `paid`
+    is what this run actually spent. `jev-latest` is cached by that name: run with --fresh after it changes.
     """
 
     def __init__(self, backend: JevBackend, path: Path, fresh: bool = False):
         self.backend = backend
         self.path = path
-        self.entries: dict[str, dict[str, float]] = {}
+        self.entries: dict[str, dict[str, Any]] = {}
         if not fresh and path.exists():
             self.entries = json.loads(path.read_text(encoding="utf-8"))
         self.hits = 0
+        self.paid = 0.0
         self._lock = threading.Lock()
 
     def decide(self, state: Any, questions: dict[str, Question]) -> Decision:
         key = self._key(state, questions)
         with self._lock:
             cached = self.entries.get(key)
-            if cached is not None and cached.keys() == questions.keys():
+            # Entries from before costs were cached have no "answers": asked again, like any miss.
+            if cached is not None and cached.get("answers", {}).keys() == questions.keys():
                 self.hits += 1
-                return Decision({qid: NoulAnswer(p) for qid, p in cached.items()}, 0.0)
+                return Decision({qid: NoulAnswer(p) for qid, p in cached["answers"].items()}, cached["cost_usd"])
         decision = self.backend.decide(state, questions)
         with self._lock:
-            self.entries[key] = {qid: a.noul for qid, a in decision.answers.items()}
+            self.paid += decision.cost_usd
+            answers = {qid: a.noul for qid, a in decision.answers.items()}
+            self.entries[key] = {"answers": answers, "cost_usd": decision.cost_usd}
         return decision
 
     def save(self) -> None:
@@ -139,7 +144,8 @@ def main() -> int:
     scored = [(expected, r.wanted) for (expected, _), r in zip(samples, results, strict=True)]
     print_thresholds(scored, clf.config.keep_at)
 
-    print(f"\ncost: ${cost:.6f} ({cache.hits}/{len(samples)} answers from the cache, free)")
+    print(f"\ncost: ${cost:.6f} for all {len(samples)} texts, ${cost / len(samples):.6f} per text on average")
+    print(f"paid this run: ${cache.paid:.6f} ({cache.hits}/{len(samples)} answers from the cache, free)")
     return 0
 
 
