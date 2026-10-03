@@ -19,7 +19,7 @@ nix build .#image                        # OCI image
 python -m readworthy.api                 # serves POST /karakeep/webhook only
 ```
 
-`python scripts/eval.py [--profile DIR]` hits the real API (needs `OPENROUTER_API_KEY`, costs money; run it only when asked). It runs `DIR/eval/{keep,archive}/*.txt` (first line the title, the rest the content) through Jev with `DIR/readworthy.toml`.
+`python scripts/eval.py [--profile DIR]` hits the real API (needs `OPENROUTER_API_KEY`, costs money; run it only when asked). It runs `DIR/eval/{keep,archive}/*.txt` (first line the title, the rest the content) through Jev with `DIR/readworthy.toml`, caching answers in `DIR/.eval-cache.json` (`--fresh` ignores it), and prints how each `keep_at` would have scored.
 
 ## Layout
 

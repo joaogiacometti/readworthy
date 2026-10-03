@@ -6,3 +6,5 @@ result
 .direnv/
 # Your own profile: liked and disliked topics, and labelled texts.
 profile/
+# Cached Jev answers from scripts/eval.py.
+.eval-cache.json

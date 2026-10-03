@@ -63,7 +63,7 @@ cp -r example-profile profile
   ```
 
   A topic can be any short phrase. The same topic can't be in both lists.
-- `profile/eval/keep/` and `profile/eval/archive/` hold texts you've sorted yourself, at least 3 each, one per `.txt` file: the title on the first line, then the content. `python scripts/eval.py` runs them through Jev and prints accuracy, a confusion matrix, Jev's probability for each text, and the cost. It needs `OPENROUTER_API_KEY` and costs a little. Where it's wrong, make a topic more specific or add a dislike.
+- `profile/eval/keep/` and `profile/eval/archive/` hold texts you've sorted yourself, at least 3 each, one per `.txt` file: the title on the first line, then the content. `python scripts/eval.py` runs them through Jev and prints accuracy, a confusion matrix, Jev's probability for each text, how each `keep_at` would have scored, and the cost. It needs `OPENROUTER_API_KEY` and costs a little; answers are cached in `profile/.eval-cache.json`, so a re-run only pays for texts, topics or a model it hasn't seen (`--fresh` asks again, e.g. after `jev-latest` changes). Where it's wrong, make a topic more specific or add a dislike.
 
 ## Development
 
