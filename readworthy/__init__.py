@@ -1,1 +1,1 @@
-"""readworthy: a Karakeep webhook that tags each bookmark read, skip or unsure."""
+"""readworthy: a Karakeep webhook that archives each bookmark whose main topic you don't like."""

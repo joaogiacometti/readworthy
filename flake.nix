@@ -1,5 +1,5 @@
 {
-  description = "readworthy: a Karakeep webhook that tags each bookmark read, skip or unsure";
+  description = "readworthy: a Karakeep webhook that archives each bookmark whose main topic you don't like";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -40,7 +40,7 @@
             User = "65534:65534";
             ExposedPorts."8000/tcp" = { };
             Labels = {
-              "org.opencontainers.image.description" = "Karakeep webhook that tags each bookmark read, skip or unsure";
+              "org.opencontainers.image.description" = "Karakeep webhook that archives bookmarks whose main topic you don't like";
               "org.opencontainers.image.version" = default.version;
               "org.opencontainers.image.source" = "https://github.com/joaogiacometti/readworthy";
             };

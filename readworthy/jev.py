@@ -27,21 +27,13 @@ MAX_ATTEMPTS = 4
 
 
 @dataclass(frozen=True)
-class ChoiceAnswer:
-    probabilities: dict[str, float]  # option -> probability
-
-
-@dataclass(frozen=True)
 class NoulAnswer:
     noul: float  # probability that the answer is yes
 
 
-Answer = ChoiceAnswer | NoulAnswer
-
-
 @dataclass(frozen=True)
 class Decision:
-    answers: dict[str, Answer]
+    answers: dict[str, NoulAnswer]
     cost_usd: float
 
 
@@ -96,10 +88,7 @@ class JevBackend:
 
 def question_body(q: Question) -> dict[str, Any]:
     """A question as the Decisions API takes it."""
-    body = {"type": q.type, "instructions": q.instructions}
-    if q.criteria is not None:
-        body["criteria"] = q.criteria
-    return body
+    return {"type": "noul", "instructions": q.instructions, "criteria": q.criteria}
 
 
 def parse_response(data: Any, questions: dict[str, Question]) -> Decision:
@@ -112,28 +101,18 @@ def parse_response(data: Any, questions: dict[str, Question]) -> Decision:
     if not isinstance(raw_answers, dict):
         raise _bad("missing answers")
     answers = {}
-    for qid, q in questions.items():
+    for qid in questions:
         a = raw_answers.get(qid)
         if not isinstance(a, dict):
             raise _bad(f"no answer for question {qid!r}")
-        if a.get("type") != q.type:
-            raise _bad(f"answer {qid!r} has type {a.get('type')!r}, expected {q.type!r}")
-        answers[qid] = _parse_answer(qid, q, a)
+        if a.get("type") != "noul":
+            raise _bad(f"answer {qid!r} has type {a.get('type')!r}, expected 'noul'")
+        answers[qid] = NoulAnswer(_probability(a.get("noul"), f"{qid}.noul"))
 
     usage = data.get("usage")
     if not isinstance(usage, dict):
         raise _bad("missing usage")
     return Decision(answers, _number(usage.get("cost"), "usage.cost"))
-
-
-def _parse_answer(qid: str, q: Question, a: dict[str, Any]) -> Answer:
-    if q.type == "noul":
-        return NoulAnswer(_probability(a.get("noul"), f"{qid}.noul"))
-    probs = a.get("probabilities")
-    if not isinstance(probs, dict) or set(probs) != set(q.options):
-        keys = sorted(probs) if isinstance(probs, dict) else probs
-        raise _bad(f"{qid}.probabilities keys {keys!r} do not match {sorted(q.options)}")
-    return ChoiceAnswer({o: _probability(probs[o], f"{qid}.probabilities.{o}") for o in q.options})
 
 
 def _bad(why: str) -> ClassifyError:

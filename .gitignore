@@ -4,5 +4,5 @@ __pycache__/
 .pytest_cache/
 result
 .direnv/
-# Your own profile: questions, rule settings and labelled texts.
+# Your own profile: liked and disliked topics, and labelled texts.
 profile/

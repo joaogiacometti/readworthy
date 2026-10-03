@@ -8,43 +8,37 @@ from typing import Any
 import httpx
 
 from readworthy.config import Question
-from readworthy.jev import Answer, ChoiceAnswer, Decision, NoulAnswer
+from readworthy.jev import Decision, NoulAnswer
 from readworthy.karakeep import KarakeepClient
 
 
 class FakeBackend:
-    """Returns the answers given in `answers`; any other question gets a fixed default: the first choice option,
-    or noul 0. Records every call in `calls` so tests can inspect what was sent.
+    """Returns the answers given in `answers`; any other question gets noul 0. Records every call in `calls` so tests
+    can inspect what was sent.
     """
 
-    def __init__(self, answers: dict[str, Answer] | None = None):
+    def __init__(self, answers: dict[str, NoulAnswer] | None = None):
         self.answers = answers or {}
         self.calls: list[tuple[Any, dict[str, Question]]] = []
 
     def decide(self, state: Any, questions: dict[str, Question]) -> Decision:
         self.calls.append((state, questions))
-        return Decision({qid: self.answers.get(qid) or _default(q) for qid, q in questions.items()}, 0.0)
+        return Decision({qid: self.answers.get(qid) or NoulAnswer(0.0) for qid in questions}, 0.0)
 
 
-def _default(q: Question) -> Answer:
-    if q.type == "noul":
-        return NoulAnswer(0.0)
-    return ChoiceAnswer({o: float(i == 0) for i, o in enumerate(q.options)})
-
-
-def link(content="Body text.", title="Title", tags=(), user_title=None):
+def link(content="Body text.", title="Title", archived=False, user_title=None):
     """A link bookmark as GET /bookmarks/{id} returns it, with `content` as its readable markdown."""
     return {
         "id": "b1",
         "title": user_title,
         "content": {"type": "link", "url": "https://example.com", "title": title},
-        "tags": [{"id": f"t{i}", "name": n, "attachedBy": "human"} for i, n in enumerate(tags)],
+        "archived": archived,
         "markdown": content,
     }
 
 
 class FakeKarakeep:
-    """A Karakeep API over httpx.MockTransport; records every request and applies tag changes.
+    """A Karakeep API over httpx.MockTransport; records every request and applies bookmark updates.
 
     Bookmarks carry their readable content under "markdown", served by GET /bookmarks/{id}/content.
     """
@@ -72,12 +66,12 @@ class FakeKarakeep:
             return httpx.Response(200, json={"content": md[:end]})
         if request.method == "GET":
             return httpx.Response(200, json={k: v for k, v in bookmark.items() if k != "markdown"})
-        tags = bookmark["tags"]
-        tags.extend({"id": f"t{len(tags)}", "name": t["tagName"], "attachedBy": "human"} for t in body["tags"])
-        return httpx.Response(200, json={"attached": []})
+        assert request.method == "PATCH" and rest == []
+        bookmark.update(body)
+        return httpx.Response(200, json={k: v for k, v in bookmark.items() if k != "markdown"})
 
-    def tag_writes(self):
-        return [(m, [t["tagName"] for t in body["tags"]]) for m, _, body in self.requests if m != "GET"]
+    def writes(self):
+        return [(m, p, body) for m, p, body in self.requests if m != "GET"]
 
 
 def karakeep_with(handler, api_key="k"):

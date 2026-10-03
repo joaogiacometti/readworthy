@@ -11,6 +11,7 @@ def test_state_is_content_object(config):
     fake = FakeBackend()
     Classifier(fake, config).classify("  hello \n")
     assert fake.calls[-1][0] == {"content": "hello"}
+    assert fake.calls[-1][1] == {"wanted": config.question}
 
 
 def test_truncation(config):
@@ -19,9 +20,10 @@ def test_truncation(config):
     assert fake.calls[-1][0] == {"content": "y" * MAX_INPUT_CHARS}
 
 
-def test_labels_from_rules(config):
-    r = Classifier(FakeBackend({"promotion": NoulAnswer(1.0)}), config).classify("buy now")
-    assert r.label == "skip" and r.checks["promotion"] == 1.0 and r.cost_usd == 0.0
+@pytest.mark.parametrize("wanted, archive", [(0.9, False), (0.5, False), (0.49, True), (0.0, True)])
+def test_archives_below_keep_at(config, wanted, archive):
+    r = Classifier(FakeBackend({"wanted": NoulAnswer(wanted)}), config).classify("text")
+    assert r.archive is archive and r.wanted == wanted and r.cost_usd == 0.0
 
 
 def test_empty_input(config):
@@ -37,4 +39,4 @@ def test_build_classifier_errors(monkeypatch, tmp_path):
     with pytest.raises(ClassifyError, match="OPENROUTER_API_KEY"):
         build_classifier()
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
-    assert build_classifier().config.rules.yes == 0.5
+    assert build_classifier().config.keep_at == 0.5

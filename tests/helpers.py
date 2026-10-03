@@ -6,9 +6,8 @@ from fake import FakeBackend
 from readworthy.core import Classifier
 from readworthy.jev import JevBackend, NoulAnswer
 
-SKIP = {"promotion": NoulAnswer(1.0)}
-# Borderline promotion could make it skip.
-UNSURE = {"promotion": NoulAnswer(0.5)}
+ARCHIVE = {"wanted": NoulAnswer(0.1)}
+KEEP = {"wanted": NoulAnswer(0.9)}
 
 
 def classifier(config, answers=None):

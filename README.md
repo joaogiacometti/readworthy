@@ -1,39 +1,16 @@
 # readworthy
 
-A [Karakeep](https://karakeep.app) webhook that tags each new bookmark with one label, depending on whether it's worth your reading time:
-
-| tag | meaning |
-|---|---|
-| `readworthy/read` | not obviously a waste of time |
-| `readworthy/skip` | obviously a waste, by your own rule (the example: a sales pitch, or something that teaches nothing and is only a rant, drama or hype) |
-| `readworthy/unsure` | a borderline answer could have made it skip, so you decide |
-
-Your reading feed is a Karakeep search for `-#readworthy/skip`, and your review list is `#readworthy/unsure`. What counts as waste is up to you: it's set in your [profile](#make-it-yours).
+A [Karakeep](https://karakeep.app) webhook that archives each new bookmark whose main topic isn't one you like. You list the topics you like and the ones you don't; everything else is left alone, so your reading list is simply your non-archived bookmarks.
 
 ## How it decides
 
-For each crawled link or new text note, readworthy asks [Jev](https://openrouter.ai/blog/insights/what-is-jev/) (TypeSafe's decision model, via OpenRouter) your profile's narrow questions about the content, all in one request. Each is a yes/no (`noul`) or a `choice`. The example profile asks four:
+For each crawled link or new text note, readworthy asks [Jev](https://openrouter.ai/blog/insights/what-is-jev/) (TypeSafe's decision model, via OpenRouter) one yes/no question built from your profile:
 
-| question | type | asks |
-|---|---|---|
-| `teaches` | yes/no | does it teach how something works, a method, or a reasoned comparison? |
-| `kind` | choice | tutorial, explanation, news, opinion, rant, drama, ... |
-| `promotion` | yes/no | does it mainly exist to sell something? |
-| `hype` | yes/no | does it make bold claims with nothing behind them? |
+> Is `content` mainly about one of: recipes, cooking techniques, or fair tests of ingredients or equipment; and not mainly one of: sales pitches, rants, feuds and gossip, or hype?
 
-Jev returns probabilities, never text. Your profile's `skip` rule then picks the label, in code ([`readworthy/rules.py`](readworthy/rules.py)). The example's is:
+Both halves are in the one question, so a feud between chefs is a "no" even though it's about cooking. (Asked only about the topic, Jev says yes to rants about a topic you like.) Jev returns the probability of "yes". When it is at least `keep_at` (default 0.5), the bookmark is kept; otherwise it is archived. A bookmark that matches neither list is archived too.
 
-```toml
-skip = "promotion or (not teaches and (kind in [rant, drama] or hype))"
-```
-
-A yes/no question is a test by its id, a choice question a test as `id in [option, ...]` (the total probability of those options), and tests combine with `not`, `and`, `or` and parentheses. Each test passes at or above `yes` (default 0.5), and is unknown inside the uncertain band (default 0.35–0.65). Then:
-
-- **skip** when the rule is surely true;
-- **unsure** when an unknown test could have changed that;
-- **read** otherwise.
-
-Only skipping loses you anything, so it has to be sure. A borderline answer that can't change the outcome doesn't matter. If anything fails (Karakeep, Jev, a bookmark with no text), the error is logged and no tag is written. It never guesses a label.
+If anything fails (Karakeep, Jev, a bookmark with no text), the error is logged and nothing is archived. It never guesses.
 
 A typical post costs well under $0.001. The text is sent to OpenRouter and TypeSafe, so only use readworthy on content you're fine sharing with them.
 
@@ -65,9 +42,9 @@ Then, in Karakeep:
 | `KARAKEEP_URL`, `KARAKEEP_API_KEY` | required |
 | `READWORTHY_WEBHOOK_TOKEN` | required; any long random string, e.g. `openssl rand -hex 32` |
 | `READWORTHY_CONFIG` | default `profile/readworthy.toml` (`/profile/readworthy.toml` in the image) |
-| `READWORTHY_MODEL` | default `~typesafe/jev-latest`; pin a snapshot for reproducible labels |
+| `READWORTHY_MODEL` | default `~typesafe/jev-latest`; pin a snapshot for reproducible results |
 
-The service stops at startup if a setting is missing or the profile is invalid. It only serves `POST /karakeep/webhook`, replies at once, and classifies in the background. Bookmarks that already have a `readworthy/*` label are left alone, so re-crawls cost nothing. To classify one again, remove its label and re-crawl it. Content past 50,000 characters is cut off.
+The service stops at startup if a setting is missing or the profile is invalid. It only serves `POST /karakeep/webhook`, replies at once, and classifies in the background. Archived bookmarks are left alone. Any other bookmark is judged again when it is re-crawled, so if you unarchive one and re-crawl it, it may be archived again. Content past 50,000 characters is cut off.
 
 ## Make it yours
 
@@ -77,8 +54,16 @@ Everything personal lives in one git-ignored folder, `profile/`:
 cp -r example-profile profile
 ```
 
-- `profile/readworthy.toml` holds your questions (ids, types, wording, examples, choice options), the `skip` rule over them and the thresholds. Add, remove or rename questions freely; the profile is rejected if the rule names a question or option that doesn't exist, or if a question isn't used by the rule (it would only cost money). The comments at the top are for you: Jev never sees them.
-- `profile/eval/read/` and `profile/eval/skip/` hold texts you've labelled yourself, at least 3 each. `python scripts/eval.py` runs them through Jev and prints accuracy, a confusion matrix, the checks behind every wrong or unsure label, and the cost. It needs `OPENROUTER_API_KEY` and costs a little. Where a label is wrong, the checks show which question to reword.
+- `profile/readworthy.toml` holds three settings:
+
+  ```toml
+  like = ["recipes", "cooking techniques"]   # at least one
+  dislike = ["sales pitches", "rants"]       # optional
+  keep_at = 0.5                              # optional; raise it to archive more, lower it to archive less
+  ```
+
+  A topic can be any short phrase. The same topic can't be in both lists.
+- `profile/eval/keep/` and `profile/eval/archive/` hold texts you've sorted yourself, at least 3 each. `python scripts/eval.py` runs them through Jev and prints accuracy, a confusion matrix, Jev's probability for each text, and the cost. It needs `OPENROUTER_API_KEY` and costs a little. Where it's wrong, make a topic more specific or add a dislike.
 
 ## Development
 

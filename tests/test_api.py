@@ -4,7 +4,7 @@ import pytest
 from conftest import EXAMPLE_PROFILE
 from fake import FakeKarakeep, link
 from fastapi.testclient import TestClient
-from helpers import SKIP, classifier, failing_backend
+from helpers import ARCHIVE, classifier, failing_backend
 
 from readworthy import api
 from readworthy.core import Classifier
@@ -23,7 +23,7 @@ class Webhook:
 
     def __call__(self, body=EVENT, headers=AUTH, **kw):
         r = self.client.post("/karakeep/webhook", json=body, headers=headers, **kw)
-        assert self.app.state.tag_queue.join(5)
+        assert self.app.state.archive_queue.join(5)
         return r
 
 
@@ -34,21 +34,21 @@ def kk():
 
 @pytest.fixture
 def post(config, kk):
-    return Webhook(classifier(config, SKIP), kk.client)
+    return Webhook(classifier(config, ARCHIVE), kk.client)
 
 
-def test_webhook_tags_bookmark(post, kk):
+def test_webhook_archives_bookmark(post, kk):
     r = post()
     assert r.status_code == 202 and r.json() == {"status": "queued"}
-    assert kk.tag_writes() == [("POST", ["readworthy/skip"])]
+    assert kk.writes() == [("PATCH", "/api/v1/bookmarks/b1", {"archived": True})]
 
 
-def test_webhook_skips_labelled_bookmark(config, caplog):
-    kk = FakeKarakeep(link(tags=["readworthy/read"]))
+def test_webhook_skips_archived_bookmark(config, caplog):
+    kk = FakeKarakeep(link(archived=True))
     with caplog.at_level(logging.INFO):
-        assert Webhook(classifier(config, SKIP), kk.client)().status_code == 202
-    assert "bookmark b1 already labelled" in caplog.text
-    assert kk.tag_writes() == []
+        assert Webhook(classifier(config, ARCHIVE), kk.client)().status_code == 202
+    assert "bookmark b1 already archived" in caplog.text
+    assert kk.writes() == []
 
 
 def test_webhook_ignores_other_events(post, kk):
@@ -84,7 +84,7 @@ def test_webhook_failure_is_logged(config, kk, caplog):
     with caplog.at_level(logging.ERROR):
         assert Webhook(failing, kk.client)().status_code == 202
     assert "bookmark b1 not classified: OpenRouter returned HTTP 500" in caplog.text
-    assert kk.tag_writes() == []
+    assert kk.writes() == []
 
 
 def test_serves_only_the_webhook(post):

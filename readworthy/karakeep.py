@@ -1,4 +1,4 @@
-"""Karakeep adapter: fetch a bookmark's content, classify it, tag the bookmark with the label.
+"""Karakeep adapter: fetch a bookmark's content, classify it, archive the bookmark if it isn't for you.
 
 Only `KarakeepClient` talks to the Karakeep API (shapes from its OpenAPI spec). Needs Karakeep v0.33.1 or later,
 for `GET /bookmarks/{id}/content`.
@@ -21,13 +21,10 @@ import httpx
 from readworthy.core import MAX_INPUT_CHARS, Classifier, Result
 from readworthy.errors import ClassifyError
 from readworthy.httputil import error_detail
-from readworthy.rules import LABELS
 
 log = logging.getLogger("readworthy.karakeep")
 
 DEFAULT_TIMEOUT = 30.0
-TAG_PREFIX = "readworthy/"
-LABEL_TAGS = frozenset(TAG_PREFIX + label for label in LABELS)
 WORKERS = 2
 
 # Karakeep ids are cuid2 (lowercase letters and digits). Anything outside this set could change the request path.
@@ -76,10 +73,8 @@ class KarakeepClient:
             raise _bad("bookmark content has no string content")
         return _MD_IMAGE.sub("", content)
 
-    def attach_tag(self, bookmark_id: str, name: str) -> None:
-        # "human": Karakeep's own AI tagging may replace tags attached by "ai".
-        body = {"tags": [{"tagName": name, "attachedBy": "human"}]}
-        self._request("POST", _path(bookmark_id, "/tags"), json=body)
+    def archive(self, bookmark_id: str) -> None:
+        self._request("PATCH", _path(bookmark_id), json={"archived": True})
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         headers = {"Authorization": f"Bearer {self.api_key}"}
@@ -140,26 +135,21 @@ def bookmark_text(bookmark: dict[str, Any], content: str) -> str:
     return f"{title}\n\n{body}" if title else body
 
 
-def labelled(bookmark: dict[str, Any]) -> bool:
-    """Whether the bookmark already has a readworthy/<label> tag."""
-    names = {t.get("name") for t in bookmark.get("tags") or [] if isinstance(t, dict)}
-    return not names.isdisjoint(LABEL_TAGS)
-
-
 def classify_bookmark(classifier: Classifier, karakeep: KarakeepClient, bookmark_id: str) -> Result | None:
-    """Classify a bookmark and tag it readworthy/<label>.
+    """Classify a bookmark and archive it unless it is about a topic you like and not mainly one you dislike.
 
-    A bookmark that already has a label is left alone and None returned: Karakeep sends an event on every re-crawl,
-    and classifying again would pay Jev for a label we have.
+    An archived bookmark is left alone and None returned: there is nothing left to do, and classifying it would pay
+    Jev for nothing. Anything else is classified on every event, so a re-crawl judges the bookmark again.
     """
     bookmark = karakeep.get_bookmark(bookmark_id)
-    if labelled(bookmark):
-        log.info("bookmark %s already labelled", bookmark_id)
+    if bookmark.get("archived") is True:
+        log.info("bookmark %s already archived", bookmark_id)
         return None
     result = classifier.classify(bookmark_text(bookmark, karakeep.get_content(bookmark_id)))
-    karakeep.attach_tag(bookmark_id, TAG_PREFIX + result.label)
-    checks = result.checks_text()
-    log.info("bookmark %s tagged %s%s (%s) $%.6f", bookmark_id, TAG_PREFIX, result.label, checks, result.cost_usd)
+    if result.archive:
+        karakeep.archive(bookmark_id)
+    outcome = "archived" if result.archive else "kept"
+    log.info("bookmark %s %s (wanted=%.2f) $%.6f", bookmark_id, outcome, result.wanted, result.cost_usd)
     return result
 
 
@@ -181,7 +171,7 @@ def parse_event(raw: bytes) -> WebhookEvent:
     return WebhookEvent(body["bookmarkId"], handled)
 
 
-class TagQueue:
+class ArchiveQueue:
     """Runs `run` (`classify_bookmark`) for webhook events on its own threads, so slow Jev calls never block requests.
 
     An event for a bookmark that is already waiting or running is merged into that run, so one bookmark is never

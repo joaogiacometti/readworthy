@@ -5,11 +5,18 @@ import threading
 import httpx
 import pytest
 from fake import FakeBackend, FakeKarakeep, karakeep_with, link
-from helpers import SKIP, UNSURE, classifier, failing_backend
+from helpers import ARCHIVE, KEEP, classifier, failing_backend
 
 from readworthy.core import MAX_INPUT_CHARS, Classifier
 from readworthy.errors import ClassifyError
-from readworthy.karakeep import KarakeepClient, KarakeepError, TagQueue, bookmark_text, classify_bookmark, parse_event
+from readworthy.karakeep import (
+    ArchiveQueue,
+    KarakeepClient,
+    KarakeepError,
+    bookmark_text,
+    classify_bookmark,
+    parse_event,
+)
 
 # --- content ---
 
@@ -62,34 +69,34 @@ def test_get_content_bad_response(body):
 # --- classify_bookmark ---
 
 
-def test_classify_bookmark_tags(config, caplog):
+def test_classify_bookmark_archives(config, caplog):
     kk = FakeKarakeep(link())
-    fake = FakeBackend(SKIP)
+    fake = FakeBackend(ARCHIVE)
     with caplog.at_level(logging.INFO, logger="readworthy.karakeep"):
         result = classify_bookmark(Classifier(fake, config), kk.client, "b1")
-    assert result.label == "skip"
-    assert (
-        "b1 tagged readworthy/skip (promotion=1.00, teaches=0.00, kind in [rant, drama]=0.00, hype=0.00) $0.000000"
-        in caplog.text
-    )
+    assert result.archive
+    assert "b1 archived (wanted=0.10) $0.000000" in caplog.text
     assert fake.calls[0][0] == {"content": "Title\n\nBody text."}
     assert [p for m, p, _ in kk.requests if m == "GET"] == ["/api/v1/bookmarks/b1", "/api/v1/bookmarks/b1/content"]
-    assert kk.tag_writes() == [("POST", ["readworthy/skip"])]
-    assert kk.requests[2][2]["tags"][0]["attachedBy"] == "human"
+    assert kk.writes() == [("PATCH", "/api/v1/bookmarks/b1", {"archived": True})]
+    assert kk.bookmarks["b1"]["archived"] is True
 
 
-def test_classify_bookmark_unsure(config):
-    kk = FakeKarakeep(link(tags=["mine"]))
-    assert classify_bookmark(classifier(config, UNSURE), kk.client, "b1").label == "unsure"
-    assert kk.tag_writes() == [("POST", ["readworthy/unsure"])]
+def test_classify_bookmark_keeps(config, caplog):
+    kk = FakeKarakeep(link())
+    with caplog.at_level(logging.INFO, logger="readworthy.karakeep"):
+        assert not classify_bookmark(classifier(config, KEEP), kk.client, "b1").archive
+    assert "b1 kept (wanted=0.90)" in caplog.text
+    assert kk.writes() == []
 
 
-@pytest.mark.parametrize("tag", ["readworthy/read", "readworthy/skip", "readworthy/unsure"])
-def test_classify_bookmark_skips_labelled(config, tag):
-    # A re-crawl of a labelled bookmark costs no Jev call and doesn't read the content.
-    kk = FakeKarakeep(link(tags=[tag]))
-    fake = FakeBackend(SKIP)
-    assert classify_bookmark(Classifier(fake, config), kk.client, "b1") is None
+def test_classify_bookmark_skips_archived(config, caplog):
+    # A re-crawl of an archived bookmark costs no Jev call and doesn't read the content.
+    kk = FakeKarakeep(link(archived=True))
+    fake = FakeBackend(ARCHIVE)
+    with caplog.at_level(logging.INFO, logger="readworthy.karakeep"):
+        assert classify_bookmark(Classifier(fake, config), kk.client, "b1") is None
+    assert "bookmark b1 already archived" in caplog.text
     assert fake.calls == []
     assert [p for m, p, _ in kk.requests] == ["/api/v1/bookmarks/b1"]
 
@@ -98,7 +105,7 @@ def test_classify_bookmark_no_text(config):
     kk = FakeKarakeep(link(content=""))
     with pytest.raises(ClassifyError, match="no text to classify"):
         classify_bookmark(classifier(config), kk.client, "b1")
-    assert kk.tag_writes() == []
+    assert kk.writes() == []
 
 
 @pytest.mark.parametrize("status, match", [(401, "HTTP 401 .*: nope"), (500, "HTTP 500")])
@@ -114,12 +121,12 @@ def test_karakeep_not_found(config):
         classify_bookmark(classifier(config), kk.client, "zz")
 
 
-def test_backend_error_writes_no_tags(config):
+def test_backend_error_archives_nothing(config):
     kk = FakeKarakeep(link())
     c = Classifier(failing_backend(), config)
     with pytest.raises(ClassifyError, match="OpenRouter returned HTTP 500"):
         classify_bookmark(c, kk.client, "b1")
-    assert kk.tag_writes() == []
+    assert kk.writes() == []
 
 
 # --- client ---
@@ -146,7 +153,7 @@ def test_client_rejects_bad_bookmark_id(bookmark_id):
     with pytest.raises(ClassifyError, match="invalid Karakeep bookmark id"):
         kk.client.get_bookmark(bookmark_id)
     with pytest.raises(ClassifyError, match="invalid Karakeep bookmark id"):
-        kk.client.attach_tag(bookmark_id, "readworthy/skip")
+        kk.client.archive(bookmark_id)
     assert kk.requests == []
 
 
@@ -183,11 +190,11 @@ def test_parse_event_not_json():
         parse_event(b"{nope")
 
 
-# --- TagQueue ---
+# --- ArchiveQueue ---
 
 
 class Runs:
-    """A run function for TagQueue that blocks until released and records what ran."""
+    """A run function for ArchiveQueue that blocks until released and records what ran."""
 
     def __init__(self, config):
         self.config = config
@@ -204,7 +211,7 @@ class Runs:
         assert self.release.wait(5)
         if self.fail:
             raise self.fail
-        return classifier(self.config, SKIP).classify("x")
+        return classifier(self.config, ARCHIVE).classify("x")
 
     def wait_started(self):
         assert self.started_one.acquire(timeout=5)
@@ -216,7 +223,7 @@ def runs(config):
 
 
 def test_queue_runs_on_its_own_threads(runs):
-    q = TagQueue(runs, workers=1)
+    q = ArchiveQueue(runs, workers=1)
     assert q.submit("b1") == "queued"
     runs.release.set()
     assert q.join(5)
@@ -226,7 +233,7 @@ def test_queue_runs_on_its_own_threads(runs):
 
 
 def test_queue_merges_events_for_a_pending_bookmark(runs):
-    q = TagQueue(runs, workers=2)
+    q = ArchiveQueue(runs, workers=2)
     assert q.submit("b1") == "queued"
     runs.wait_started()
     assert q.submit("b1") == "merged"  # running: never twice at once
@@ -249,7 +256,7 @@ def test_queue_merges_events_for_a_pending_bookmark(runs):
 def test_queue_logs_failures_and_keeps_going(runs, caplog, error, logged):
     runs.fail = error
     runs.release.set()
-    q = TagQueue(runs, workers=1)
+    q = ArchiveQueue(runs, workers=1)
     with caplog.at_level(logging.ERROR, logger="readworthy.karakeep"):
         q.submit("b1")
         assert q.join(5)

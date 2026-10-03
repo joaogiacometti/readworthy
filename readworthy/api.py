@@ -1,4 +1,4 @@
-"""The service: POST /karakeep/webhook classifies and tags crawled bookmarks.
+"""The service: POST /karakeep/webhook classifies crawled bookmarks and archives the ones you don't want.
 
 Run: readworthy [--host HOST] [--port PORT].
 """
@@ -23,7 +23,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from readworthy.core import Classifier, build_classifier
 from readworthy.errors import ClassifyError
-from readworthy.karakeep import KarakeepClient, TagQueue, classify_bookmark, parse_event
+from readworthy.karakeep import ArchiveQueue, KarakeepClient, classify_bookmark, parse_event
 
 log = logging.getLogger("readworthy.api")
 
@@ -34,7 +34,7 @@ _webhook_auth = HTTPBearer(auto_error=False)
 def create_app(classifier: Classifier, karakeep: KarakeepClient, token: str) -> FastAPI:
     if not token:
         raise ClassifyError("READWORTHY_WEBHOOK_TOKEN is not set")
-    queue = TagQueue(functools.partial(classify_bookmark, classifier, karakeep))
+    queue = ArchiveQueue(functools.partial(classify_bookmark, classifier, karakeep))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -42,14 +42,14 @@ def create_app(classifier: Classifier, karakeep: KarakeepClient, token: str) -> 
         await run_in_threadpool(queue.close)
 
     app = FastAPI(title="readworthy", lifespan=lifespan, openapi_url=None)  # no Swagger UI: Karakeep is the only client
-    app.state.tag_queue = queue
+    app.state.archive_queue = queue
 
     @app.post("/karakeep/webhook", status_code=202)
     async def karakeep_webhook(
         request: Request,
         auth: Annotated[HTTPAuthorizationCredentials | None, Depends(_webhook_auth)],
     ) -> dict:
-        """Queue crawled links and new text notes to be classified and tagged.
+        """Queue crawled links and new text notes to be classified, and archived unless you like their topic.
 
         Replies at once (Karakeep times out after 5 s); `status` is `queued`, or `merged` when the bookmark is
         already being classified.

@@ -1,4 +1,4 @@
-"""Classifier: text -> Jev answers -> read/skip/unsure (via rules) -> Result."""
+"""Classifier: text -> Jev's answer to "is it about a like, and not mainly a dislike?" -> keep or archive."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from pathlib import Path
 from readworthy.config import Config, load_config
 from readworthy.errors import ClassifyError
 from readworthy.jev import JevBackend
-from readworthy.rules import decide
 
 # Jev's context window is 32k tokens for state + questions. English prose is ~4 chars/token, so this leaves room.
 MAX_INPUT_CHARS = 50_000
@@ -16,12 +15,9 @@ MAX_INPUT_CHARS = 50_000
 
 @dataclass(frozen=True)
 class Result:
-    label: str  # read, skip or unsure
-    checks: dict[str, float]  # rule tests: test name -> probability
+    archive: bool
+    wanted: float  # probability that it is about a like and not mainly a dislike
     cost_usd: float
-
-    def checks_text(self) -> str:
-        return ", ".join(f"{k}={v:.2f}" for k, v in self.checks.items())
 
 
 class Classifier:
@@ -34,9 +30,10 @@ class Classifier:
         text = text.strip()
         if not text:
             raise ClassifyError("input text is empty")
-        decision = self.backend.decide({"content": text[:MAX_INPUT_CHARS]}, self.config.questions)
-        label, checks = decide(decision.answers, self.config.rules)
-        return Result(label, checks, decision.cost_usd)
+        question = self.config.question
+        decision = self.backend.decide({"content": text[:MAX_INPUT_CHARS]}, {question.id: question})
+        wanted = round(decision.answers[question.id].noul, 4)
+        return Result(wanted < self.config.keep_at, wanted, decision.cost_usd)
 
 
 def build_classifier(config_path: str | Path | None = None) -> Classifier:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run every text in <profile>/eval/<label>/*.txt through Jev with <profile>/readworthy.toml.
+"""Run every text in <profile>/eval/{keep,archive}/*.txt through Jev with <profile>/readworthy.toml.
 
-Prints accuracy, a confusion matrix, the rule checks behind every unsure or
-wrong label, and the total cost. Needs OPENROUTER_API_KEY; costs money.
+Prints accuracy, a confusion matrix, Jev's `wanted` probability behind every wrong
+outcome, and the total cost. Needs OPENROUTER_API_KEY; costs money.
 """
 
 from __future__ import annotations
@@ -15,7 +15,8 @@ from pathlib import Path
 
 from readworthy.core import build_classifier
 from readworthy.errors import ClassifyError
-from readworthy.rules import LABELS
+
+OUTCOMES = ("keep", "archive")
 
 
 def main() -> int:
@@ -30,14 +31,13 @@ def main() -> int:
         print(f"eval: error: {e}", file=sys.stderr)
         return 1
 
-    samples = [(label, p) for label in LABELS for p in sorted((fixtures / label).glob("*.txt"))]
-    counts = Counter(label for label, _ in samples)
-    # unsure/ is optional: an unsure result is the model's doubt, not a kind of content.
-    thin = [label for label in LABELS if label != "unsure" and counts[label] < 3]
+    samples = [(outcome, p) for outcome in OUTCOMES for p in sorted((fixtures / outcome).glob("*.txt"))]
+    counts = Counter(outcome for outcome, _ in samples)
+    thin = [outcome for outcome in OUTCOMES if counts[outcome] < 3]
     if thin:
         print(f"warning: fewer than 3 samples for: {', '.join(thin)}", file=sys.stderr)
     if not samples:
-        print(f"eval: no texts found in {fixtures}/<label>/", file=sys.stderr)
+        print(f"eval: no texts found in {fixtures}/<keep|archive>/", file=sys.stderr)
         return 1
 
     confusion: Counter[tuple[str, str]] = Counter()
@@ -56,27 +56,26 @@ def main() -> int:
                 return 1
     for (expected, path), r in zip(samples, results, strict=True):
         cost += r.cost_usd
-        confusion[expected, r.label] += 1
-        mark = "ok " if r.label == expected else "BAD"
-        print(f"{mark} {path.relative_to(fixtures)}  -> {r.label}")
-        if r.label == "unsure" or r.label != expected:
-            print("      checks: " + r.checks_text())
-        if r.label != expected:
-            wrong.append((path, expected, r))
+        got = "archive" if r.archive else "keep"
+        confusion[expected, got] += 1
+        mark = "ok " if got == expected else "BAD"
+        print(f"{mark} {path.relative_to(fixtures)}  -> {got} (wanted={r.wanted:.2f})")
+        if got != expected:
+            wrong.append((path, expected, got))
 
     correct = sum(n for (e, p), n in confusion.items() if e == p)
     print(f"\naccuracy: {correct}/{len(samples)} = {correct / len(samples):.0%}")
 
-    width = max(len(i) for i in LABELS) + 2
+    width = max(len(o) for o in OUTCOMES) + 2
     print("\nconfusion (rows = expected, cols = predicted):")
-    print(" " * width + "".join(f"{i:>{width}}" for i in LABELS))
-    for e in LABELS:
-        print(f"{e:<{width}}" + "".join(f"{confusion[e, p]:>{width}}" for p in LABELS))
+    print(" " * width + "".join(f"{o:>{width}}" for o in OUTCOMES))
+    for e in OUTCOMES:
+        print(f"{e:<{width}}" + "".join(f"{confusion[e, p]:>{width}}" for p in OUTCOMES))
 
     if wrong:
         print("\nmisclassified:")
-        for path, expected, r in wrong:
-            print(f"- {path.relative_to(fixtures)}: expected {expected}, got {r.label}")
+        for path, expected, got in wrong:
+            print(f"- {path.relative_to(fixtures)}: expected {expected}, got {got}")
             print("    " + path.read_text(encoding="utf-8").strip().replace("\n", " ")[:200] + "…")
 
     print(f"\ntotal cost: ${cost:.6f}")
