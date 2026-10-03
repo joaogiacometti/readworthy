@@ -43,6 +43,7 @@ class CachedBackend:
         self.entries: dict[str, dict[str, Any]] = {}
         if not fresh and path.exists():
             self.entries = json.loads(path.read_text(encoding="utf-8"))
+        self.asked = 0
         self.hits = 0
         self.paid = 0.0
         self._lock = threading.Lock()
@@ -50,6 +51,7 @@ class CachedBackend:
     def decide(self, state: Any, questions: dict[str, Question]) -> Decision:
         key = self._key(state, questions)
         with self._lock:
+            self.asked += 1
             cached = self.entries.get(key)
             # Entries from before costs were cached have no "answers": asked again, like any miss.
             if cached is not None and cached.get("answers", {}).keys() == questions.keys():
@@ -145,7 +147,7 @@ def main() -> int:
     print_thresholds(scored, clf.config.keep_at)
 
     print(f"\ncost: ${cost:.6f} for all {len(samples)} texts, ${cost / len(samples):.6f} per text on average")
-    print(f"paid this run: ${cache.paid:.6f} ({cache.hits}/{len(samples)} answers from the cache, free)")
+    print(f"paid this run: ${cache.paid:.6f} ({cache.hits}/{cache.asked} answers from the cache, free)")
     return 0
 
 
