@@ -55,15 +55,16 @@ def test_model_from_env(monkeypatch):
     assert JevBackend.from_env().model == "typesafe/jev-1.13"
 
 
-def test_retries_rate_limits(questions, recorded):
+def test_retries_rate_limits_and_server_errors(questions, recorded):
     sleeps = []
     backend_replaying(
         httpx.Response(429, headers={"retry-after": "2"}),
         httpx.Response(529),
+        httpx.Response(520, text="error code: 520"),
         httpx.Response(200, json=recorded),
         sleeps=sleeps,
     ).decide({"content": "x"}, questions)
-    assert sleeps == [2.0, 1.0]
+    assert sleeps == [2.0, 1.0, 2.0]
 
 
 @pytest.mark.parametrize("header", ["-1", "nan", "inf", "soon"])

@@ -21,8 +21,6 @@ from readworthy.httputil import error_detail
 API_URL = "https://openrouter.ai/api/alpha/decisions"
 DEFAULT_MODEL = "~typesafe/jev-latest"
 DEFAULT_TIMEOUT = 60.0
-# The API asks clients to back off and retry on these.
-RETRY_STATUSES = {429, 529}
 MAX_ATTEMPTS = 4
 
 
@@ -75,7 +73,8 @@ class JevBackend:
                 resp = self.client.post(API_URL, json=body, headers=headers)
             except httpx.HTTPError as e:
                 raise ClassifyError(f"request to OpenRouter failed: {e}") from None
-            if resp.status_code not in RETRY_STATUSES or attempt == MAX_ATTEMPTS - 1:
+            # Back off and retry rate limits (429) and server errors: 529 (overloaded) and other 5xx are transient.
+            if (resp.status_code != 429 and resp.status_code < 500) or attempt == MAX_ATTEMPTS - 1:
                 break
             self.sleep(_retry_delay(resp, attempt))
         if resp.status_code != 200:
