@@ -44,7 +44,7 @@ Then, in Karakeep:
 | `READWORTHY_CONFIG` | default `profile/readworthy.toml` (`/profile/readworthy.toml` in the image) |
 | `READWORTHY_MODEL` | default `~typesafe/jev-latest`; pin a snapshot for reproducible results |
 
-The service stops at startup if a setting is missing or the profile is invalid. It only serves `POST /karakeep/webhook`, replies at once, and classifies in the background. Archived bookmarks are left alone. Any other bookmark is judged again when it is re-crawled, so if you unarchive one and re-crawl it, it may be archived again. Content past 50,000 characters is cut off.
+The service stops at startup if a setting is missing or the profile is invalid. It only serves `POST /karakeep/webhook`, replies at once, and classifies in the background. Archived bookmarks are left alone. Any other bookmark is judged again when it is re-crawled, so if you unarchive one and re-crawl it, it may be archived again. Content past 12,000 characters is cut off: the topic is clear by then, and it keeps long posts cheap.
 
 ## Make it yours
 

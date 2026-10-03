@@ -9,8 +9,9 @@ from readworthy.config import Config, load_config
 from readworthy.errors import ClassifyError
 from readworthy.jev import JevBackend
 
-# Jev's context window is 32k tokens for state + questions. English prose is ~4 chars/token, so this leaves room.
-MAX_INPUT_CHARS = 50_000
+# About 3k tokens: the topic is clear by then (same eval score as 50k), and long posts cost ~4x less. Jev's context
+# window is 32k tokens.
+MAX_INPUT_CHARS = 12_000
 
 
 @dataclass(frozen=True)
