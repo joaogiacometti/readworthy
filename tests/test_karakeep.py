@@ -13,7 +13,8 @@ from readworthy.karakeep import (
     ArchiveQueue,
     KarakeepClient,
     KarakeepError,
-    bookmark_text,
+    bookmark_body,
+    bookmark_title,
     classify_bookmark,
     parse_event,
 )
@@ -21,22 +22,23 @@ from readworthy.karakeep import (
 # --- content ---
 
 
-def test_bookmark_text():
-    assert bookmark_text(link(), "Body text.") == "Title\n\nBody text."
-    assert bookmark_text(link(title=None), " Body text.\n") == "Body text."
-    assert bookmark_text({"id": "b", "content": {"type": "text", "text": "a note"}}, "a note") == "a note"
-    assert bookmark_text(link(), "a\n\n\n\nb") == "Title\n\na\n\nb"
+def test_bookmark_body():
+    assert bookmark_body(link(), " Body text.\n") == "Body text."
+    assert bookmark_body(link(), "a\n\n\n\nb") == "a\n\nb"
 
 
-def test_bookmark_text_prefers_user_title():
-    assert bookmark_text(link(user_title=" Mine "), "Body.") == "Mine\n\nBody."
-    assert bookmark_text(link(user_title="  "), "Body.") == "Title\n\nBody."
+def test_bookmark_title():
+    assert bookmark_title(link()) == "Title"
+    assert bookmark_title(link(title=None)) == ""
+    assert bookmark_title({"id": "b", "content": {"type": "text", "text": "a note"}}) == ""
+    assert bookmark_title(link(user_title=" Mine ")) == "Mine"
+    assert bookmark_title(link(user_title="  ")) == "Title"
 
 
 @pytest.mark.parametrize("content", ["", " \n\n"])
-def test_bookmark_text_empty(content):
+def test_bookmark_body_empty(content):
     with pytest.raises(ClassifyError, match=r"bookmark b1 has no text to classify"):
-        bookmark_text(link(), content)
+        bookmark_body(link(), content)
 
 
 def test_get_content():
@@ -76,7 +78,7 @@ def test_classify_bookmark_archives(config, caplog):
         result = classify_bookmark(Classifier(fake, config), kk.client, "b1")
     assert result.archive
     assert "b1 archived (wanted=0.10) $0.000000" in caplog.text
-    assert fake.calls[0][0] == {"content": "Title\n\nBody text."}
+    assert fake.calls[0][0] == {"title": "Title", "content": "Body text."}
     assert [p for m, p, _ in kk.requests if m == "GET"] == ["/api/v1/bookmarks/b1", "/api/v1/bookmarks/b1/content"]
     assert kk.writes() == [("PATCH", "/api/v1/bookmarks/b1", {"archived": True})]
     assert kk.bookmarks["b1"]["archived"] is True

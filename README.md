@@ -6,7 +6,7 @@ A [Karakeep](https://karakeep.app) webhook that archives each new bookmark whose
 
 For each crawled link or new text note, readworthy asks [Jev](https://openrouter.ai/blog/insights/what-is-jev/) (TypeSafe's decision model, via OpenRouter) one yes/no question built from your profile:
 
-> Is `content` mainly about one of: recipes, cooking techniques, or fair tests of ingredients or equipment; and not mainly one of: sales pitches, rants, feuds and gossip, or hype?
+> Judging by `title` and `content`, is it mainly about one of: recipes, cooking techniques, or fair tests of ingredients or equipment; and not mainly one of: sales pitches, rants, feuds and gossip, or hype?
 
 Both halves are in the one question, so a feud between chefs is a "no" even though it's about cooking. (Asked only about the topic, Jev says yes to rants about a topic you like.) Jev returns the probability of "yes". When it is at least `keep_at` (default 0.5), the bookmark is kept; otherwise it is archived. A bookmark that matches neither list is archived too.
 
@@ -63,7 +63,7 @@ cp -r example-profile profile
   ```
 
   A topic can be any short phrase. The same topic can't be in both lists.
-- `profile/eval/keep/` and `profile/eval/archive/` hold texts you've sorted yourself, at least 3 each. `python scripts/eval.py` runs them through Jev and prints accuracy, a confusion matrix, Jev's probability for each text, and the cost. It needs `OPENROUTER_API_KEY` and costs a little. Where it's wrong, make a topic more specific or add a dislike.
+- `profile/eval/keep/` and `profile/eval/archive/` hold texts you've sorted yourself, at least 3 each, one per `.txt` file: the title on the first line, then the content. `python scripts/eval.py` runs them through Jev and prints accuracy, a confusion matrix, Jev's probability for each text, and the cost. It needs `OPENROUTER_API_KEY` and costs a little. Where it's wrong, make a topic more specific or add a dislike.
 
 ## Development
 
@@ -79,4 +79,4 @@ nix flake check                # tests + lint, as CI runs them
 nix build .#image              # the container image (docker load < result)
 ```
 
-To release, bump `version` in `pyproject.toml`, then push a tag `vX.Y.Z`. GitHub Actions builds `ghcr.io/<owner>/readworthy:X.Y.Z` and `:latest` for amd64 and arm64.
+To release, bump `version` in `pyproject.toml`, then push a tag `vX.Y.Z`. GitHub Actions builds `ghcr.io/<owner>/readworthy:X.Y.Z` and `:latest` for amd64 and arm64, then creates the GitHub release with notes generated from the commits.

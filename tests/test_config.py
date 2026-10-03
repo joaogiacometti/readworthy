@@ -29,7 +29,8 @@ def test_question():
     q = parse_config({"like": ["knitting", " gardening ", "baking"], "dislike": ["ads", "rants"]}).question
     assert q.id == "wanted"
     assert q.instructions == (
-        "Is `content` mainly about one of: knitting, gardening, or baking; and not mainly one of: ads or rants?"
+        "Judging by `title` and `content`, is it mainly about one of: knitting, gardening, or baking; and not mainly "
+        "one of: ads or rants?"
     )
     assert q.criteria["true"].startswith("Explains, reports or calmly argues something about one of the topics above")
     assert q.criteria["false"].startswith("Mainly one of: ads or rants, even when it is about a topic above;")
@@ -38,7 +39,7 @@ def test_question():
 def test_question_without_dislikes():
     config = parse_config({"like": ["knitting"]})
     assert config.dislike == () and config.keep_at == 0.5
-    assert config.question.instructions == "Is `content` mainly about one of: knitting?"
+    assert config.question.instructions == "Judging by `title` and `content`, is it mainly about one of: knitting?"
     assert config.question.criteria["false"] == "Mainly about something else."
 
 

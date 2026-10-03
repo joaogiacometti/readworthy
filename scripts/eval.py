@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Run every text in <profile>/eval/{keep,archive}/*.txt through Jev with <profile>/readworthy.toml.
 
+Each file's first line is the title and the rest the content, sent to Jev as separate fields like the webhook does.
+
 Prints accuracy, a confusion matrix, Jev's `wanted` probability behind every wrong
 outcome, and the total cost. Needs OPENROUTER_API_KEY; costs money.
 """
@@ -17,6 +19,12 @@ from readworthy.core import build_classifier
 from readworthy.errors import ClassifyError
 
 OUTCOMES = ("keep", "archive")
+
+
+def read_sample(path: Path) -> tuple[str, str]:
+    """(content, title): the first line is the title, the rest the content."""
+    title, _, content = path.read_text(encoding="utf-8").partition("\n")
+    return content, title
 
 
 def main() -> int:
@@ -45,7 +53,7 @@ def main() -> int:
     cost = 0.0
     # Each sample is an independent API call; run them concurrently, report in order.
     with ThreadPoolExecutor(max_workers=8) as pool:
-        futures = [pool.submit(clf.classify, path.read_text(encoding="utf-8")) for _, path in samples]
+        futures = [pool.submit(clf.classify, *read_sample(path)) for _, path in samples]
         results = []
         for (_, path), future in zip(samples, futures, strict=True):
             try:

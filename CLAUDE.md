@@ -19,14 +19,14 @@ nix build .#image                        # OCI image
 python -m readworthy.api                 # serves POST /karakeep/webhook only
 ```
 
-`python scripts/eval.py [--profile DIR]` hits the real API (needs `OPENROUTER_API_KEY`, costs money; run it only when asked). It runs `DIR/eval/{keep,archive}/*.txt` through Jev with `DIR/readworthy.toml`.
+`python scripts/eval.py [--profile DIR]` hits the real API (needs `OPENROUTER_API_KEY`, costs money; run it only when asked). It runs `DIR/eval/{keep,archive}/*.txt` (first line the title, the rest the content) through Jev with `DIR/readworthy.toml`.
 
 ## Layout
 
 - `readworthy/api.py`: FastAPI app, built once at startup by `app_from_env` (missing settings → exit 1). Checks the `READWORTHY_WEBHOOK_TOKEN` bearer token, parses the raw body with `parse_event` (422 if not JSON or malformed, 200 `ignored` unless it's a crawled link or a created text note), replies 202 and hands the id to `ArchiveQueue`. Keep logic out of it.
-- `readworthy/karakeep.py`: `KarakeepClient` is the only code that talks to Karakeep; it validates bookmark ids before building URLs. `classify_bookmark` skips bookmarks that are already archived, otherwise fetches `GET /bookmarks/{id}/content?format=markdown` (one request, up to `MAX_INPUT_CHARS`, images stripped), classifies title + content, and archives it (`PATCH /bookmarks/{id}` `{"archived": true}`) when `Result.archive`, logging the outcome. `ArchiveQueue` runs it on 2 worker threads of its own, merging events for a bookmark that is already pending or running; failures are only logged.
-- `readworthy/core.py`: `Classifier.classify` → `backend.decide({"content": text}, {"wanted": config.question})` → `Result` (`archive` = `wanted < keep_at`, `wanted`, `cost_usd`).
-- `readworthy/jev.py`: the only code that talks to OpenRouter (retries on 429/529 honouring `Retry-After`; `question_body` builds the request's questions), plus the answer type (`NoulAnswer`). Only noul questions are asked. API changes should be a one-file fix here.
+- `readworthy/karakeep.py`: `KarakeepClient` is the only code that talks to Karakeep; it validates bookmark ids before building URLs. `classify_bookmark` skips bookmarks that are already archived, otherwise fetches `GET /bookmarks/{id}/content?format=markdown` (one request, up to `MAX_INPUT_CHARS`, images stripped), classifies it (title and content as separate state fields), and archives it (`PATCH /bookmarks/{id}` `{"archived": true}`) when `Result.archive`, logging the outcome. `ArchiveQueue` runs it on 2 worker threads of its own, merging events for a bookmark that is already pending or running; failures are only logged.
+- `readworthy/core.py`: `Classifier.classify` → `backend.decide({"title": title, "content": content}, {"wanted": config.question})` → `Result` (`archive` = `wanted < keep_at`, `wanted`, `cost_usd`).
+- `readworthy/jev.py`: the only code that talks to OpenRouter (retries on 429 and 5xx honouring `Retry-After`; `question_body` builds the request's questions), plus the answer type (`NoulAnswer`). Only noul questions are asked. API changes should be a one-file fix here.
 - `readworthy/config.py`: loads `$READWORTHY_CONFIG`, else `profile/readworthy.toml`, and validates it strictly: `like` (non-empty list of topics), optional `dislike`, optional `keep_at` (default 0.5), no other keys, no topic in both lists. `Config.question` builds the one `wanted` noul question from them: about a like, and not mainly a dislike (both halves in one question; asked about the topic alone, Jev keeps rants about a liked topic).
 
 ## Profiles and privacy

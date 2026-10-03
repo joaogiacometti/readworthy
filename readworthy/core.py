@@ -25,13 +25,14 @@ class Classifier:
         self.backend = backend
         self.config = config
 
-    def classify(self, text: str) -> Result:
-        """Classify `text`, cut to MAX_INPUT_CHARS."""
-        text = text.strip()
-        if not text:
+    def classify(self, content: str, title: str = "") -> Result:
+        """Classify `content`, cut to MAX_INPUT_CHARS, under `title`. Jev gets them as separate fields."""
+        content = content.strip()
+        if not content:
             raise ClassifyError("input text is empty")
         question = self.config.question
-        decision = self.backend.decide({"content": text[:MAX_INPUT_CHARS]}, {question.id: question})
+        state = {"title": title.strip(), "content": content[:MAX_INPUT_CHARS]}
+        decision = self.backend.decide(state, {question.id: question})
         wanted = round(decision.answers[question.id].noul, 4)
         return Result(wanted < self.config.keep_at, wanted, decision.cost_usd)
 

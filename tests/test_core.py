@@ -7,17 +7,17 @@ from readworthy.errors import ClassifyError
 from readworthy.jev import NoulAnswer
 
 
-def test_state_is_content_object(config):
+def test_state_is_title_and_content(config):
     fake = FakeBackend()
-    Classifier(fake, config).classify("  hello \n")
-    assert fake.calls[-1][0] == {"content": "hello"}
+    Classifier(fake, config).classify("  hello \n", " Hi ")
+    assert fake.calls[-1][0] == {"title": "Hi", "content": "hello"}
     assert fake.calls[-1][1] == {"wanted": config.question}
 
 
 def test_truncation(config):
     fake = FakeBackend()
     Classifier(fake, config).classify("y" * (MAX_INPUT_CHARS + 1))
-    assert fake.calls[-1][0] == {"content": "y" * MAX_INPUT_CHARS}
+    assert fake.calls[-1][0] == {"title": "", "content": "y" * MAX_INPUT_CHARS}
 
 
 @pytest.mark.parametrize("wanted, archive", [(0.9, False), (0.5, False), (0.49, True), (0.0, True)])

@@ -126,13 +126,12 @@ def bookmark_title(bookmark: dict[str, Any]) -> str:
     return ""
 
 
-def bookmark_text(bookmark: dict[str, Any], content: str) -> str:
-    """The text to classify: the title, then the readable content."""
+def bookmark_body(bookmark: dict[str, Any], content: str) -> str:
+    """The readable content to classify, with runs of blank lines collapsed."""
     body = re.sub(r"\n{3,}", "\n\n", content).strip()
     if not body:
         raise ClassifyError(f"bookmark {bookmark.get('id')} has no text to classify")
-    title = bookmark_title(bookmark)
-    return f"{title}\n\n{body}" if title else body
+    return body
 
 
 def classify_bookmark(classifier: Classifier, karakeep: KarakeepClient, bookmark_id: str) -> Result | None:
@@ -145,7 +144,7 @@ def classify_bookmark(classifier: Classifier, karakeep: KarakeepClient, bookmark
     if bookmark.get("archived") is True:
         log.info("bookmark %s already archived", bookmark_id)
         return None
-    result = classifier.classify(bookmark_text(bookmark, karakeep.get_content(bookmark_id)))
+    result = classifier.classify(bookmark_body(bookmark, karakeep.get_content(bookmark_id)), bookmark_title(bookmark))
     if result.archive:
         karakeep.archive(bookmark_id)
     outcome = "archived" if result.archive else "kept"

@@ -49,13 +49,13 @@ class Config:
         if not self.dislike:
             return Question(
                 QUESTION_ID,
-                f"Is `content` mainly about one of: {likes}?",
+                f"Judging by `title` and `content`, is it mainly about one of: {likes}?",
                 {"true": yes, "false": "Mainly about something else."},
             )
         dislikes = _listing(self.dislike)
         return Question(
             QUESTION_ID,
-            f"Is `content` mainly about one of: {likes}; and not mainly one of: {dislikes}?",
+            f"Judging by `title` and `content`, is it mainly about one of: {likes}; and not mainly one of: {dislikes}?",
             {
                 "true": yes,
                 "false": f"Mainly one of: {dislikes}, even when it is about a topic above; or mainly about "
